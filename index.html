@@ -1,0 +1,359 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FLProgress Explained</title>
+<meta name="description" content="Four small games that explain progress-based client selection in federated learning: why picking the clients that look worst gets fooled by noisy data, and why picking by rate of improvement does not.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230f766e'/%3E%3Cpath d='M7 23 L13 15 L18 19 L25 9' stroke='white' stroke-width='3' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<nav class="nav">
+  <div class="nav-inner">
+    <a class="brand" href="#top">FL<span>Progress</span></a>
+    <div class="nav-links">
+      <a href="#setup">The setup</a>
+      <a href="#game1">1 · Be the server</a>
+      <a href="#game2">2 · Spot the teacher</a>
+      <a href="#game3">3 · The noisy TV</a>
+      <a href="#game4">4 · The race</a>
+      <a href="#results">Real results</a>
+      <a href="#failures">Where it fails</a>
+      <a href="#method">Method</a>
+    </div>
+    <button class="theme-btn" id="themeBtn" aria-label="Toggle dark mode" title="Toggle dark mode">◐</button>
+  </div>
+</nav>
+
+<!-- ================= HERO ================= -->
+<header class="hero" id="top">
+  <div class="wrap">
+    <span class="eyebrow">Federated learning · client selection</span>
+    <h1>Don't learn from whoever looks worst. Learn from whoever is <em>actually helping</em>.</h1>
+    <p class="lede">
+      When a federated server picks which devices to learn from, the common rule is "pick the ones the model gets most
+      wrong". Devices with corrupted data always look wrong, so that rule keeps choosing them. FLProgress picks devices
+      by how fast they improve the model instead. Noise can make a device look bad forever, but it can't fake progress.
+    </p>
+    <p class="lede">Four short games below show how it works. The real experiment numbers come after.</p>
+    <div class="hero-cta">
+      <a class="btn primary" href="#game1">Play the first game ▸</a>
+      <a class="btn" href="#results">Skip to the results</a>
+    </div>
+    <div class="stat-row">
+      <div class="card stat"><b>52%</b><span>of picks made by the "pick the worst" rule landed on corrupted devices (chance: 30%) on CIFAR-10</span></div>
+      <div class="card stat"><b>+6.6 pts</b><span>accuracy over random selection on CIFAR-10 with progress-based selection (0.532 vs 0.466)</span></div>
+      <div class="card stat"><b>0.810 &gt; 0.799</b><span>on EMNIST, progress-based selection beat an oracle that knows which devices are corrupted</span></div>
+    </div>
+  </div>
+</header>
+
+<!-- ================= SETUP ================= -->
+<section id="setup">
+  <div class="wrap grid-2" style="align-items:center">
+    <div>
+      <span class="eyebrow">The setup in 30 seconds</span>
+      <h2>One model, a hundred phones, nobody shares data</h2>
+      <ol class="steps">
+        <li>A server holds one shared model. Each phone holds its own private data.</li>
+        <li>Each round, the server picks a few phones. They train the model on their own data and send back only the
+          update.</li>
+        <li>The server averages the updates into the shared model. The data never leaves the phones.</li>
+        <li><strong>The catch:</strong> the server can't look at the data, so it can't tell that some phones have
+          wrong labels (a broken sensor, a bad labelling script). Training on them makes the model worse.</li>
+      </ol>
+      <p>The whole question is <strong>which phones to pick each round</strong>.</p>
+    </div>
+    <div class="card fl-diagram">
+      <svg id="flDiagram" viewBox="0 0 400 320" role="img" aria-label="A server in the middle exchanging updates with eight phones; three phones show static, meaning their labels are corrupted"></svg>
+      <div class="legend" style="justify-content:center">
+        <span><i class="swatch" style="background:var(--clean)"></i>phone with correct labels</span>
+        <span><i class="swatch" style="background:var(--noisy)"></i>phone with corrupted labels</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= GAME 1 ================= -->
+<section id="game1">
+  <div class="wrap">
+    <div class="game-head">
+      <div>
+        <span class="game-num">GAME 1 OF 4</span>
+        <h2>Be the server</h2>
+        <p class="lede" style="margin:0">
+          12 phones. 4 have corrupted labels, but you don't know which. Pick 3 phones per round for 8 rounds and get the
+          shared model as accurate as you can. First play with the information the standard rule uses, then with the
+          information FLProgress uses.
+        </p>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="toolbar" style="justify-content:space-between;margin-bottom:16px">
+        <div class="seg" id="g1Mode">
+          <button data-mode="loss" class="on">Round A: you see each phone's loss</button>
+          <button data-mode="progress">Round B: you see each phone's progress</button>
+        </div>
+        <button class="btn sm" id="g1New">↻ New deal</button>
+      </div>
+
+      <div class="hud">
+        <div><div class="k">Round</div><div class="v" id="g1Round">1 / 8</div></div>
+        <div><div class="k">Model accuracy</div><div class="v" id="g1Acc">10%</div></div>
+        <div class="meter"><i id="g1Meter"></i></div>
+        <button class="btn primary" id="g1Go" disabled>Train on 3 phones</button>
+      </div>
+
+      <p id="g1Hint" class="note" style="margin:0 0 14px"></p>
+      <div class="clients" id="g1Clients"></div>
+
+      <div id="g1End" class="hidden" style="margin-top:22px">
+        <h3 id="g1EndTitle"></h3>
+        <p id="g1EndText"></p>
+        <div class="result-bars" id="g1Bars"></div>
+        <div class="callout" id="g1Lesson"></div>
+      </div>
+    </div>
+    <p class="note"><strong>Toy model.</strong> The games use a small simulation that keeps only the core mechanism:
+      correct data teaches, corrupted data damages, and corrupted data keeps a high loss no matter what. It exaggerates
+      the gaps. The real experiment numbers are in <a href="#results">Real results</a>.</p>
+  </div>
+</section>
+
+<!-- ================= GAME 2 ================= -->
+<section id="game2">
+  <div class="wrap">
+    <div class="game-head">
+      <div>
+        <span class="game-num">GAME 2 OF 4</span>
+        <h2>Spot the teacher</h2>
+        <p class="lede" style="margin:0">
+          Each card shows a phone's loss over the last rounds. Lower is better, and the line shows how it has been
+          changing. Which phone should the server train on next? After you choose, you'll see how much each one would
+          really have improved the model.
+        </p>
+      </div>
+      <div class="toolbar">
+        <div class="dots" id="g2Dots"></div>
+        <span class="mono" id="g2Score">0 / 0</span>
+      </div>
+    </div>
+    <div class="quiz-opts" id="g2Opts"></div>
+    <div class="callout hidden" id="g2Explain"></div>
+    <div class="toolbar" style="margin-top:14px">
+      <button class="btn primary hidden" id="g2Next">Next question ▸</button>
+      <button class="btn hidden" id="g2Restart">↻ Play again</button>
+    </div>
+  </div>
+</section>
+
+<!-- ================= GAME 3 ================= -->
+<section id="game3">
+  <div class="wrap">
+    <div class="game-head">
+      <div>
+        <span class="game-num">GAME 3 OF 4</span>
+        <h2>The noisy TV</h2>
+        <p class="lede" style="margin:0">
+          The idea comes from robotics. A robot that is rewarded for <em>surprise</em> explores a room. Then someone
+          switches on a TV showing static. Static is always surprising, so the robot stares at it forever. A robot
+          rewarded for <em>getting less surprised</em> (learning progress) looks at the TV, learns nothing, and moves on.
+          A phone with random labels is the TV of federated learning.
+        </p>
+      </div>
+      <div class="toolbar">
+        <button class="btn" id="g3Tv">📺 Switch TV off</button>
+        <button class="btn" id="g3Pause">⏸ Pause</button>
+        <button class="btn" id="g3Reset">↻ Reset</button>
+      </div>
+    </div>
+    <div class="rooms">
+      <div class="card room">
+        <h3><i class="swatch" style="background:var(--c-loss)"></i>Robot A: rewarded for surprise</h3>
+        <p style="font-size:.9rem;margin:0 0 10px">Goes wherever its prediction error is highest. This is the "pick the worst" rule.</p>
+        <svg id="roomA" viewBox="0 0 400 260"></svg>
+        <div class="room-stats">
+          <div>Time at the TV: <b id="aTv">0%</b></div>
+          <div>Room learned: <b id="aLearn">0%</b></div>
+        </div>
+      </div>
+      <div class="card room">
+        <h3><i class="swatch" style="background:var(--c-progress)"></i>Robot B: rewarded for progress</h3>
+        <p style="font-size:.9rem;margin:0 0 10px">Goes wherever its error has been falling fastest. This is the FLProgress rule.</p>
+        <svg id="roomB" viewBox="0 0 400 260"></svg>
+        <div class="room-stats">
+          <div>Time at the TV: <b id="bTv">0%</b></div>
+          <div>Room learned: <b id="bLearn">0%</b></div>
+        </div>
+      </div>
+    </div>
+    <p class="note">Each object shows a bar of how much the robot still has to learn about it. The four objects can be
+      learned. The TV can't: its static never becomes predictable. Try switching the TV off to see both robots behave
+      the same.</p>
+  </div>
+</section>
+
+<!-- ================= GAME 4 ================= -->
+<section id="game4">
+  <div class="wrap">
+    <div class="game-head">
+      <div>
+        <span class="game-num">GAME 4 OF 4</span>
+        <h2>Place your bet: the race</h2>
+        <p class="lede" style="margin:0">
+          Scale up to 40 phones, 6 picked per round, 60 rounds. Set how many phones are corrupted and how unevenly the
+          data is spread, bet on a strategy, and watch them race.
+        </p>
+      </div>
+    </div>
+    <div class="card">
+      <div class="race-controls">
+        <div class="ctl">
+          <label>Corrupted phones <b id="g4NoisyV">30%</b></label>
+          <input type="range" id="g4Noisy" min="0" max="60" step="10" value="30">
+        </div>
+        <div class="ctl">
+          <label>How unevenly data is spread <b id="g4SkewV">moderate</b></label>
+          <input type="range" id="g4Skew" min="0" max="2" step="1" value="1">
+        </div>
+        <div class="ctl">
+          <label>Your bet</label>
+          <div class="bet-row" id="g4Bets"></div>
+        </div>
+      </div>
+      <div class="toolbar" style="margin-bottom:12px">
+        <button class="btn primary" id="g4Run" disabled>Pick a strategy to bet on</button>
+        <span class="mono" id="g4Status" style="color:var(--ink-3);font-size:.88rem"></span>
+      </div>
+      <div class="grid-2">
+        <div>
+          <h3>Model accuracy per round</h3>
+          <div class="chart-box"><canvas id="g4Acc"></canvas></div>
+        </div>
+        <div>
+          <h3>Share of picks on corrupted phones <span style="font-weight:400;color:var(--ink-3);font-size:.85rem">(5-round average)</span></h3>
+          <div class="chart-box"><canvas id="g4Nsr"></canvas></div>
+        </div>
+      </div>
+      <div class="legend" id="g4Legend"></div>
+      <div class="callout hidden" id="g4Verdict"></div>
+    </div>
+    <p class="note"><strong>About the "oracle":</strong> it cheats by knowing which phones are corrupted, so it
+      isn't in the betting. It shows the best you could do by simply avoiding noise. <strong>Limitation:</strong>
+      this toy model doesn't reproduce the real method's failure under extreme skew. See
+      <a href="#failures">Where it fails</a>.</p>
+  </div>
+</section>
+
+<!-- ================= RESULTS ================= -->
+<section id="results">
+  <div class="wrap">
+    <span class="eyebrow">Real results</span>
+    <h2>What happened in the actual experiments</h2>
+    <p class="lede">CNNs trained with FedAvg, 100 clients, 10 picked per round, 30% of clients with fully random labels,
+      150 rounds, 3 seeds. These numbers are copied from the project's result files, not from the toy model.</p>
+
+    <div class="card">
+      <div class="toolbar" style="justify-content:space-between;margin-bottom:12px">
+        <div class="seg" id="resSetting"></div>
+        <div class="seg" id="resMetric">
+          <button data-m="acc" class="on">Final accuracy</button>
+          <button data-m="nsr">Picks on corrupted clients</button>
+        </div>
+      </div>
+      <p id="resDesc" style="font-size:.92rem"></p>
+      <div class="res-chart" id="resChart"></div>
+      <div class="callout" id="resTake"></div>
+    </div>
+
+    <div class="grid-2" style="margin-top:20px">
+      <figure class="card">
+        <img src="img/cifar10_a0.5_c100_n30_accuracy.png" alt="Accuracy per round on CIFAR-10 for each selection strategy, with bands across three seeds" loading="lazy">
+        <figcaption>CIFAR-10, Dirichlet(0.5): accuracy per round, bands over 3 seeds.</figcaption>
+      </figure>
+      <figure class="card">
+        <img src="img/cifar10_a0.5_c100_n30_noisy_selection.png" alt="Share of each round's picks that landed on corrupted clients, CIFAR-10" loading="lazy">
+        <figcaption>CIFAR-10, Dirichlet(0.5): how often each strategy picked corrupted clients.</figcaption>
+      </figure>
+    </div>
+    <figure class="card" style="margin-top:20px">
+      <img src="img/emnist_a0.5_c100_n30_accuracy.png" alt="Accuracy per round on EMNIST; progress-based selection ends above the oracle" loading="lazy">
+      <figcaption>EMNIST-byclass, Dirichlet(0.5): progress-based selection ends above the oracle on all three seeds.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<!-- ================= FAILURES ================= -->
+<section id="failures">
+  <div class="wrap">
+    <span class="eyebrow">Where it fails</span>
+    <h2>Two failures, reported with their causes</h2>
+    <p class="lede">Both came from the method's own logs. Both were first treated as bugs, until the per-client data
+      showed they were real.</p>
+
+    <div class="card fail" style="margin-bottom:20px">
+      <h3>1. Attribution inversion <small>extreme data skew</small></h3>
+      <p>When each client holds only one or two classes (Dirichlet 0.1), the way the method measures a client's
+        progress turns upside down. It measures progress by applying one client's update alone and checking a small,
+        class-balanced probe set. A specialist that teaches one class pushes the model away from the other nine, so its
+        solo update looks harmful. A random-label update partly cancels itself out and barely moves the model, so it
+        looks less harmful.</p>
+      <ul class="tight">
+        <li>96–99% of clean clients end with a negative progress score.</li>
+        <li>A random corrupted client outranks a random clean one 69–85% of the time.</li>
+        <li>Picks on corrupted clients rise during training, from about 0.55 to 0.80, and accuracy drops to 0.187.</li>
+      </ul>
+      <figure>
+        <img src="img/inversion_proof_a01.png" alt="Left: clean clients' final progress scores sit below noisy clients' scores. Right: the share of picks on noisy clients rises from 0.3 to around 0.8." loading="lazy">
+        <figcaption>CIFAR-10, Dirichlet(0.1). Left: clean clients (blue) score below corrupted ones (red). Right: picks on corrupted clients climb well above chance.</figcaption>
+      </figure>
+      <p class="note">The failure is in how a single client's contribution is measured, not in the idea of rewarding
+        progress. At Dirichlet 0.5 and above, the same measurement ranks clients correctly.</p>
+    </div>
+
+    <div class="card fail">
+      <h3>2. Lock-in <small>exploration</small></h3>
+      <p>By around round 100 on CIFAR-10, the method settles on a fixed group of 8–10 clients and picks them in about 130
+        of 150 rounds. Accuracy stops changing at 0.53, while the oracle continues to 0.655.</p>
+      <p>The cause is that success removes the signal. Once the model has learned that group's data, every client's
+        measured progress falls toward zero, the ranking stops changing, and the small exploration bonus can't overturn
+        it. This is probably true of any selector whose reward is a contribution signal that its own success drives to
+        zero. Most of the gap to the oracle at Dirichlet 0.5 is an exploration problem, not a measurement problem.
+        Experiments with stronger exploration are still to be run.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ================= METHOD ================= -->
+<section id="method">
+  <div class="wrap narrow">
+    <span class="eyebrow">Method</span>
+    <h2>The whole method in three lines</h2>
+    <p>For each picked client <i>i</i> in round <i>t</i>, measure how much its update <em>alone</em> lowers the loss on
+      a small clean probe set held by the server:</p>
+    <div class="formula">g<sub>i</sub> = L<sub>probe</sub>(w<sub>t</sub>) − L<sub>probe</sub>(w<sub>t</sub> + Δ<sub>i</sub>)</div>
+    <p>Keep a moving average of that gain, so the score tracks recent progress rather than all past progress:</p>
+    <div class="formula">m<sub>i</sub> ← β·m<sub>i</sub> + (1 − β)·g<sub>i</sub> &nbsp;&nbsp;&nbsp; β = 0.6</div>
+    <p>Pick the top <i>k</i> clients by that score plus an exploration bonus for clients that haven't been tried much (UCB):</p>
+    <div class="formula">S<sub>t</sub> = top-k [ m<sub>i</sub> + c·√(ln t / n<sub>i</sub>) ]</div>
+    <p>The key choice is the <strong>rate versus level</strong> distinction. As a control, the same moving-average and
+      UCB machinery was fed a reputation-style <em>level</em> signal ("align") instead. It reached 0.426 on CIFAR-10,
+      against 0.532 for the progress signal. The gain comes from the signal, not the bandit.</p>
+    <p class="note"><strong>Status:</strong> working draft, July 2026. Comparisons against GreedyFed, VARS-FL, and
+      noise-ratio bandit selection are still pending.</p>
+  </div>
+</section>
+
+<footer>
+  <p>FLProgress: progress-based client selection in federated learning.</p>
+  <p>The games run on a toy simulation in your browser. The numbers in "Real results" and "Where it fails" come from the
+    project's experiment logs.</p>
+</footer>
+
+<script src="sim.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
