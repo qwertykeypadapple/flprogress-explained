@@ -52,7 +52,16 @@
         if (en.isIntersecting) {
           links.forEach((a) => a.classList.remove("active"));
           const a = map.get(en.target.id);
-          if (a) { a.classList.add("active"); a.scrollIntoView({ block: "nearest", inline: "nearest" }); }
+          if (a) {
+            a.classList.add("active");
+            // Scroll only the nav strip sideways. scrollIntoView would also move
+            // the page, which fights the reader's own scrolling.
+            const strip = a.parentElement;
+            const left = a.offsetLeft - strip.offsetLeft;
+            if (left < strip.scrollLeft || left + a.offsetWidth > strip.scrollLeft + strip.clientWidth) {
+              strip.scrollTo({ left: Math.max(0, left - 16), behavior: "smooth" });
+            }
+          }
         }
       });
     }, { rootMargin: "-45% 0px -50% 0px" });
@@ -87,8 +96,13 @@
     el("text", { x: 30, y: 39, "text-anchor": "middle", style: "fill:#fff;font-size:10px;opacity:.85" }, sg).textContent = "shared model";
 
     const statics = $$(".static", svg);
-    let t0 = performance.now(), picks = [0, 3, 5];
+    let t0 = performance.now(), picks = [0, 3, 5], onScreen = false, running = false;
+    new IntersectionObserver((en) => {
+      onScreen = en[0].isIntersecting;
+      if (onScreen && !running && !reduceMotion) { running = true; requestAnimationFrame(frame); }
+    }).observe(svg);
     function frame(now) {
+      if (!onScreen) { running = false; return; } // stop drawing while off-screen
       const T = 2600, ph = ((now - t0) % T) / T;
       if (ph < 0.02 && !frame.lock) { picks = [...Array(n).keys()].sort(() => Math.random() - 0.5).slice(0, 3); frame.lock = true; }
       if (ph > 0.5) frame.lock = false;
@@ -103,8 +117,10 @@
       });
       statics.forEach((s) => (s.style.opacity = (0.15 + Math.random() * 0.7).toFixed(2)));
       if (!reduceMotion) requestAnimationFrame(frame);
+      else running = false;
     }
-    requestAnimationFrame(frame);
+    // with reduced motion, draw a single still frame
+    if (reduceMotion) { onScreen = true; requestAnimationFrame(frame); }
   })();
 
   // =============================================================== GAME 1
@@ -462,9 +478,11 @@
       $(learnSel).textContent = pct(Math.max(0, learn));
     }
 
+    const tvRects = () => tick.rects || (tick.rects = $$(".tvscreen rect"));
     function tick() {
-      $$(".tvscreen rect").forEach((r) => (r.style.opacity = tvOn ? (0.15 + Math.random() * 0.85).toFixed(2) : "0.08"));
-      if (paused || !visible) return;
+      if (!visible) return; // nothing to animate while the game is off-screen
+      tvRects().forEach((r) => (r.style.opacity = tvOn ? (0.15 + Math.random() * 0.85).toFixed(2) : "0.08"));
+      if (paused) return;
       tick.n = (tick.n || 0) + 1;
       if (tick.n % 5 !== 0) return; // robots move every 5th static frame
       step(A); step(B);
@@ -472,6 +490,7 @@
     }
 
     function reset() {
+      tick.rects = null; // the rooms are rebuilt, so re-query the TV pixels
       A = makeAgent("#roomA", "surprise");
       B = makeAgent("#roomB", "progress");
       // the CSS transition uses the transform property; keep attribute + style in sync
