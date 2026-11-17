@@ -45,7 +45,7 @@
     <div class="stat-row">
       <div class="card stat"><b>52%</b><span>of picks made by the "pick the worst" rule landed on corrupted devices (chance: 30%) on CIFAR-10</span></div>
       <div class="card stat"><b>+6.6 pts</b><span>accuracy over random selection on CIFAR-10 with progress-based selection (0.532 vs 0.466)</span></div>
-      <div class="card stat"><b>0.810 &gt; 0.799</b><span>on EMNIST, progress-based selection beat an oracle that knows which devices are corrupted</span></div>
+      <div class="card stat"><b>0.810 vs 0.799</b><span>on EMNIST, progress-based selection matched or beat, on average, an oracle that knows which devices are corrupted</span></div>
     </div>
   </div>
 </header>
@@ -131,8 +131,8 @@
         <span class="game-num">GAME 2 OF 4</span>
         <h2>Spot the teacher</h2>
         <p class="lede" style="margin:0">
-          Each card shows a phone's loss over the last rounds. Lower is better, and the line shows how it has been
-          changing. Which phone should the server train on next? After you choose, you'll see how much each one would
+          Each card shows a phone's loss over the last rounds: how wrong the model is on that phone's data, and how that
+          has been changing. Which phone should the server train on next? After you choose, you'll see how much each one would
           really have improved the model.
         </p>
       </div>
@@ -158,7 +158,8 @@
         <span class="game-num">GAME 3 OF 4</span>
         <h2>The noisy TV</h2>
         <p class="lede" style="margin:0">
-          The idea comes from robotics. A robot that is rewarded for <em>surprise</em> explores a room. Then someone
+          The idea comes from curiosity-driven reinforcement learning. A robot that is rewarded for <em>surprise</em>
+          explores a room. Then someone
           switches on a TV showing static. Static is always surprising, so the robot stares at it forever. A robot
           rewarded for <em>getting less surprised</em> (learning progress) looks at the TV, learns nothing, and moves on.
           A phone with random labels is the TV of federated learning.
@@ -281,7 +282,7 @@
     </div>
     <figure class="card" style="margin-top:20px">
       <img src="img/emnist_a0.5_c100_n30_accuracy.png" alt="Accuracy per round on EMNIST; progress-based selection ends above the oracle" loading="lazy">
-      <figcaption>EMNIST-byclass, Dirichlet(0.5): progress-based selection ends above the oracle on all three seeds.</figcaption>
+      <figcaption>EMNIST-byclass, Dirichlet(0.5): progress-based selection ends above the oracle on average (0.810 vs 0.799). Seed by seed it is ahead on two and level on the third (0.7992 vs 0.7990).</figcaption>
     </figure>
   </div>
 </section>
@@ -304,7 +305,8 @@
       <ul class="tight">
         <li>96–99% of clean clients end with a negative progress score.</li>
         <li>A random corrupted client outranks a random clean one 69–85% of the time.</li>
-        <li>Picks on corrupted clients rise during training, from about 0.55 to 0.80, and accuracy drops to 0.187.</li>
+        <li>Picks on corrupted clients climb well above chance (30%) and settle at about 80% on two seeds and 50% on the
+          third. Accuracy ends at 0.187.</li>
       </ul>
       <figure>
         <img src="img/inversion_proof_a01.png" alt="Left: clean clients' final progress scores sit below noisy clients' scores. Right: the share of picks on noisy clients rises from 0.3 to around 0.8." loading="lazy">
@@ -317,7 +319,7 @@
     <div class="card fail">
       <h3>2. Lock-in <small>exploration</small></h3>
       <p>By around round 100 on CIFAR-10, the method settles on a fixed group of 8–10 clients and picks them in about 130
-        of 150 rounds. Accuracy stops changing at 0.53, while the oracle continues to 0.655.</p>
+        of 150 rounds. After that, accuracy barely moves and ends around 0.53, while the oracle reaches 0.655.</p>
       <p>The cause is that success removes the signal. Once the model has learned that group's data, every client's
         measured progress falls toward zero, the ranking stops changing, and the small exploration bonus can't overturn
         it. This is probably true of any selector whose reward is a contribution signal that its own success drives to

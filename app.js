@@ -149,8 +149,8 @@
       go.disabled = st.done || st.sel.size !== K;
       go.textContent = st.done ? "Game over" : st.sel.size === K ? "Train on these 3 phones ▸" : `Pick ${K - st.sel.size} more phone${K - st.sel.size === 1 ? "" : "s"}`;
       $("#g1Hint").innerHTML = mode === "loss"
-        ? "<strong>You see:</strong> each phone's loss under the current model (higher = the model gets that phone's data more wrong). The standard rule picks the 3 highest. Lower loss is better."
-        : "<strong>You see:</strong> for each phone you've already trained on, how much its update alone changed accuracy on a small clean test set the server keeps (a moving average). Untried phones show “?”. This is what FLProgress uses.";
+        ? "<strong>You see:</strong> each phone's loss under the current model (higher = the model gets that phone's data more wrong). The standard rule picks the 3 highest, because they look like they have the most to learn."
+        : "<strong>You see:</strong> for each phone you've already trained on, how much its update alone changed accuracy on a small clean test set the server keeps (a moving average). Untried phones show “?”. This is what FLProgress uses (the real method measures the drop in loss rather than accuracy; the idea is the same).";
 
       box.innerHTML = "";
       const maxLoss = Math.max(3.2, ...st.losses);
@@ -236,7 +236,7 @@
         ? `<strong>What happened:</strong> corrupted phones always have the highest loss, because random labels can't be learned. The standard rule
            spent <strong>${pct(bots.loss.nsr)}</strong> of its picks on them. If you noticed that some phones' loss never went down and stopped picking them,
            you were already judging by <em>progress</em>, not loss. Now switch to <strong>Round B</strong> to play with that information shown directly.`
-        : `<strong>What happened:</strong> once you try a corrupted phone, its progress score goes negative, so you stop picking it. Clean phones also get
+        : `<strong>What happened:</strong> once you try a corrupted phone, its progress score comes out near zero or negative, so you stop picking it. Clean phones also get
            ranked by how much they still teach. The FLProgress bot spent <strong>${pct(bots.progress.nsr)}</strong> of its picks on corrupted phones, mostly in the
            first rounds while it tried everyone once. The standard rule spent <strong>${pct(bots.loss.nsr)}</strong>.`;
     }
@@ -280,7 +280,7 @@
         if (g[0] - g[1] < 0.008) continue; // make sure there is a clear best answer
         return r.shuffle(opts);
       }
-      return null;
+      return makeQuestion(seed + 7919); // no clear best answer in this batch; try another
     }
 
     function spark(svg, hist, lo, hi) {
@@ -356,7 +356,7 @@
       msg += nz.hist[nz.hist.length - 1] >= Math.max(...cur.map((o) => o.hist[o.hist.length - 1])) - 1e-9
         ? "The corrupted phone had the highest loss, so the standard rule would have picked it. Its line stays flat or climbs, because random labels can't be learned. "
         : "The corrupted phone's line stays flat or climbs, because random labels can't be learned. ";
-      msg += "Among clean phones, the one with more left to learn teaches the most.";
+      msg += "Among clean phones, the one with more left to learn usually teaches more.";
       const ex = $("#g2Explain");
       ex.innerHTML = msg;
       ex.className = "callout" + (ok ? "" : " warn");
@@ -541,7 +541,7 @@
       bets.appendChild(b);
     });
     $("#g4Legend").innerHTML = ORDER.map((nm) =>
-      `<span><i class="swatch" style="background:var(${STRAT[nm].color})"></i>${STRAT[nm].label}${nm === "oracle" ? " (dashed, cheats)" : ""}</span>`).join("");
+      `<span><i class="swatch" style="background:var(${STRAT[nm].color})"></i>${nm === "oracle" ? "Oracle (dashed; cheats by knowing who's corrupted)" : STRAT[nm].label}</span>`).join("");
 
     const noisyIn = $("#g4Noisy"), skewIn = $("#g4Skew");
     function labels() {
@@ -664,7 +664,7 @@
     const SETTINGS = [
       {
         id: "c05", label: "CIFAR-10 · moderate skew",
-        desc: "CIFAR-10, Dirichlet(0.5), 100 clients, 30% corrupted, 3 seeds. The headline setting, and the only one that also ran Oort and the level-signal control.",
+        desc: "CIFAR-10, Dirichlet(0.5), 100 clients, 30% corrupted, 3 seeds. The headline setting, and the only one on this page that also ran Oort and the level-signal control.",
         rows: { random: r(0.4659, 0.0048, 0.312), loss: r(0.4128, 0.1718, 0.518), oort: r(0.4173, 0.034, 0.382), align: r(0.426, 0.03, 0.3), progress: r(0.532, 0.0167, 0.207), oracle: r(0.6554, 0.0005, 0) },
         take: "The highest-loss rule put 52% of its picks on corrupted clients (chance: 30%) on every seed, and its accuracy split across seeds: 0.516, <strong>0.171</strong>, 0.552. FLProgress is the best strategy that doesn't cheat. The level-signal control (Align) uses the same bandit as FLProgress and reaches only 0.426, so the gain comes from measuring <em>rate</em>.",
       },
@@ -685,7 +685,7 @@
         id: "em", label: "EMNIST · moderate skew",
         desc: "EMNIST-byclass (62 classes), Dirichlet(0.5), 100 clients, 30% corrupted, 3 seeds.",
         rows: { random: r(0.5666, 0.0734, 0.298), loss: r(0.5013, 0.3335, 0.579), progress: r(0.81, 0.0078, 0.025), oracle: r(0.7989, 0.0004, 0) },
-        take: "FLProgress beats the oracle (0.810 vs 0.799) on all three seeds, and stops picking corrupted clients entirely after its first pass through all clients. The oracle only avoids noise; a progress signal also ranks the clean clients by how much they still teach.",
+        take: "FLProgress ends above the oracle on average (0.810 vs 0.799): ahead on two seeds and level on the third (0.7992 vs 0.7990). After its first pass through all clients, it picks corrupted ones in fewer than 1% of picks, and in none after round 64. The oracle only avoids noise; a progress signal also ranks the clean clients by how much they still teach.",
       },
     ];
     let cur = SETTINGS[0], metric = "acc";
